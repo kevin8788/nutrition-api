@@ -1,0 +1,56 @@
+{
+  "name": "nutrition-api",
+  "version": "1.0.0",
+  "description": "NestJS API for nutrition analysis from Base64 food images.",
+  "private": true,
+  "scripts": {
+    "build": "nest build",
+    "dev": "nodemon",
+    "start": "node dist/main",
+    "start:dev": "nodemon",
+    "start:nest": "nest start --watch",
+    "start:debug": "nest start --debug --watch",
+    "test": "echo \"No tests configured yet\""
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kevin8788/nutrition-api.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "UNLICENSED",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/kevin8788/nutrition-api/issues"
+  },
+  "homepage": "https://github.com/kevin8788/nutrition-api#readme",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.78.0",
+    "@nestjs/common": "^11.1.16",
+    "@nestjs/core": "^11.1.16",
+    "@nestjs/jwt": "^11.0.2",
+    "@nestjs/passport": "^11.0.5",
+    "@nestjs/platform-express": "^11.1.16",
+    "@nestjs/throttler": "^6.5.0",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.15.1",
+    "dotenv": "^17.3.1",
+    "openai": "^6.29.0",
+    "passport": "^0.7.0",
+    "passport-jwt": "^4.0.1",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^11.0.16",
+    "@nestjs/schematics": "^11.0.9",
+    "@nestjs/testing": "^11.1.16",
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.5.0",
+    "@types/passport-jwt": "^4.0.1",
+    "nodemon": "^3.1.14",
+    "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0",
+    "typescript": "^5.9.3"
+  }
+}
