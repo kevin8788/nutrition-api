@@ -4,48 +4,57 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { randomUUID } from 'crypto';
+import { InjectRepository } from '@nestjs/typeorm';
+import * as bcrypt from 'bcrypt';
+import { Repository } from 'typeorm';
 import configuration from '../config/configuration';
+import { User } from '../database/user.entity';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
-import { AuthResponse, AuthUser, JwtPayload } from './interfaces/auth-response.interface';
+import { AuthResponse, JwtPayload } from './interfaces/auth-response.interface';
 
 @Injectable()
 export class AuthService {
-  private readonly users = new Map<string, AuthUser>();
   private readonly config = configuration();
 
-  constructor(private readonly jwtService: JwtService) {}
+  constructor(
+    private readonly jwtService: JwtService,
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
+  ) {}
 
   async register(registerDto: RegisterDto): Promise<AuthResponse> {
-    const existingUser = this.findByEmail(registerDto.email);
-    if (existingUser) {
+    const existing = await this.userRepository.findOne({
+      where: { email: registerDto.email.toLowerCase() },
+    });
+    if (existing) {
       throw new ConflictException('User already exists');
     }
 
-    const user: AuthUser = {
-      id: randomUUID(),
+    const passwordHash = await bcrypt.hash(registerDto.password, 10);
+    const user = this.userRepository.create({
       email: registerDto.email.toLowerCase(),
-      password: registerDto.password,
-    };
-
-    this.users.set(user.id, user);
+      passwordHash,
+    });
+    await this.userRepository.save(user);
 
     return this.generateToken(user);
   }
 
   async login(loginDto: LoginDto): Promise<AuthResponse> {
-    const user = this.findByEmail(loginDto.email);
+    const user = await this.userRepository.findOne({
+      where: { email: loginDto.email.toLowerCase() },
+    });
 
-    if (!user || user.password !== loginDto.password) {
+    if (!user || !(await bcrypt.compare(loginDto.password, user.passwordHash))) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
     return this.generateToken(user);
   }
 
-  async validateUser(userId: string): Promise<AuthUser | null> {
-    return this.users.get(userId) ?? null;
+  async validateUser(userId: string): Promise<User | null> {
+    return this.userRepository.findOne({ where: { id: userId } });
   }
 
   getConfiguredApiKey(): string | null {
@@ -58,22 +67,11 @@ export class AuthService {
     return configuredApiKey !== null && apiKey === configuredApiKey;
   }
 
-  private findByEmail(email: string): AuthUser | undefined {
-    const normalizedEmail = email.toLowerCase();
-    return Array.from(this.users.values()).find(
-      (candidate) => candidate.email === normalizedEmail,
-    );
-  }
-
-  private generateToken(user: AuthUser): AuthResponse {
+  private generateToken(user: User): AuthResponse {
     const payload: JwtPayload = { sub: user.id, email: user.email };
-
     return {
       access_token: this.jwtService.sign(payload),
-      user: {
-        id: user.id,
-        email: user.email,
-      },
+      user: { id: user.id, email: user.email },
     };
   }
 }

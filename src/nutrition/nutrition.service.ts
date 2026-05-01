@@ -4,16 +4,18 @@ import {
   HttpStatus,
   Injectable,
 } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
 import { createHash } from 'crypto';
+import { Repository } from 'typeorm';
 import {
   AnthropicService,
   NutritionAnalysis,
 } from '../anthropic/anthropic.service';
 import configuration from '../config/configuration';
+import { NutritionLog } from '../database/nutrition-log.entity';
 import { AnalyzeImageDto } from './dto/analyze-image.dto';
 import { NutritionResponse } from './interfaces/nutrition-response.interface';
 
-const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
 const VALID_MIME_TYPES = new Set([
   'image/jpeg',
   'image/png',
@@ -32,11 +34,16 @@ export class NutritionService {
   private readonly config = configuration();
   private readonly clientQueues = new Map<string, ClientQueueState>();
 
-  constructor(private readonly anthropicService: AnthropicService) {}
+  constructor(
+    private readonly anthropicService: AnthropicService,
+    @InjectRepository(NutritionLog)
+    private readonly nutritionLogRepository: Repository<NutritionLog>,
+  ) {}
 
   async analyzeImage(
     dto: AnalyzeImageDto,
     clientKey: string,
+    userId?: string,
   ): Promise<NutritionResponse> {
     const fingerprint = this.createFingerprint(dto);
     const queue = this.getClientQueue(clientKey);
@@ -58,7 +65,7 @@ export class NutritionService {
     queue.pendingCount += 1;
 
     const task = queue.tail
-      .then(() => this.performAnalysis(dto))
+      .then(() => this.performAnalysis(dto, userId))
       .finally(() => {
         queue.pendingCount -= 1;
         queue.requests.delete(fingerprint);
@@ -74,14 +81,8 @@ export class NutritionService {
     return task;
   }
 
-  private async performAnalysis(dto: AnalyzeImageDto): Promise<NutritionResponse> {
+  private async performAnalysis(dto: AnalyzeImageDto, userId?: string): Promise<NutritionResponse> {
     const mimeType = this.resolveMimeType(dto);
-    const base64Data = dto.imageBase64.replace(/^data:[^;]+;base64,/, '');
-    const imageSize = Buffer.from(base64Data, 'base64').byteLength;
-
-    // if (imageSize > MAX_IMAGE_SIZE_BYTES) {
-    //   throw new BadRequestException('Image too large');
-    // }
 
     if (!VALID_MIME_TYPES.has(mimeType)) {
       throw new BadRequestException('Invalid image type');
@@ -94,13 +95,35 @@ export class NutritionService {
       this.resolveLanguage(dto),
     );
 
-    return {
+    const response: NutritionResponse = {
       isValidFood: result.isValidFood,
       foodName: result.foodName,
       servingSize: result.servingSize,
       nutrients: result.nutrients,
       description: result.description,
     };
+
+    if (userId && result.isValidFood) {
+      await this.saveLog(userId, dto, response);
+    }
+
+    return response;
+  }
+
+  private async saveLog(
+    userId: string,
+    dto: AnalyzeImageDto,
+    result: NutritionResponse,
+  ): Promise<void> {
+    const log = this.nutritionLogRepository.create({
+      userId,
+      foodName: result.foodName,
+      servingSize: result.servingSize,
+      nutrients: result.nutrients,
+      description: result.description,
+      imageBase64: null,
+    });
+    await this.nutritionLogRepository.save(log);
   }
 
   private getClientQueue(clientKey: string): ClientQueueState {
