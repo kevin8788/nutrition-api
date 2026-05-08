@@ -7,6 +7,7 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import configuration from './config/configuration';
 import { HealthModule } from './health/health.module';
 import { NutritionModule } from './nutrition/nutrition.module';
+import { PrismaModule } from './prisma/prisma.module';
 
 const config = configuration();
 
@@ -18,6 +19,7 @@ const config = configuration();
         limit: config.rateLimit.limit,
       },
     ]),
+    PrismaModule,
     AuthModule,
     NutritionModule,
     AnthropicModule,

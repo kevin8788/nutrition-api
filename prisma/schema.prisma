@@ -1,0 +1,65 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id           BigInt         @id @default(autoincrement())
+  created_at   DateTime       @default(now()) @db.Timestamptz(6)
+  first_name   String?        @db.VarChar
+  last_name    String?        @db.VarChar
+  username     String?        @db.VarChar
+  email        String?        @db.VarChar
+  dob          DateTime?      @db.Date
+  last_login   DateTime?      @db.Date
+  gender       String?        @db.VarChar
+  is_active    Boolean?       @default(true)
+  google_uid   String?        @db.VarChar
+  settings     settings[]
+  user_profile user_profile[]
+
+  @@map("users")
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model settings {
+  id                        BigInt   @default(autoincrement())
+  created_at                DateTime @default(now()) @db.Timestamptz(6)
+  user_id                   BigInt
+  language                  String?  @default("en") @db.VarChar
+  dark_mode                 Boolean? @default(false)
+  notifications_enabled     Boolean?
+  audio_cues_enabled        Boolean?
+  voice_coaching_enabled    Boolean?
+  location_tracking_enabled Boolean?
+  weight_unit               String?  @db.VarChar
+  height_unit               String?  @db.VarChar
+  distance_unit             String?  @db.VarChar
+  updated_at                String?  @db.VarChar
+  users                     User     @relation(fields: [user_id], references: [id], onDelete: SetNull)
+
+  @@id([id, user_id])
+}
+
+/// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+model user_profile {
+  id                    BigInt    @id @default(autoincrement())
+  created_at            DateTime  @default(now()) @db.Timestamptz(6)
+  user_id               BigInt?
+  weight                Float?
+  height                Float?
+  activity_level        String?   @db.VarChar
+  daily_walking_minutes BigInt?
+  has_run_before        Boolean?
+  days_per_week         Int?      @db.SmallInt
+  preferred_location    String?   @db.VarChar
+  goal_type             String?   @db.VarChar
+  intensity_preference  String?   @db.VarChar
+  updated_at            DateTime? @db.Date
+  users                 User?     @relation(fields: [user_id], references: [id])
+}

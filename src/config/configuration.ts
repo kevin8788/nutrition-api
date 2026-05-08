@@ -9,10 +9,18 @@ export default () => ({
   },
   auth: {
     apiKey: process.env.AUTH_API_KEY || '',
-  },  
+  },
+  database: {
+    url: process.env.DATABASE_URL || '',
+  },
+  firebase: {
+    projectId: process.env.FIREBASE_PROJECT_ID || '',
+    clientEmail: process.env.FIREBASE_CLIENT_EMAIL || '',
+    privateKey: process.env.FIREBASE_PRIVATE_KEY || '',
+  },
   hugging: {
     apiKey: process.env.HUGGINGFACE_API_KEY || '',
-    model: 'moonshotai/Kimi-K2-Instruct:novita'
+    model: 'moonshotai/Kimi-K2-Instruct:novita',
   },
   anthropic: {
     apiKey: process.env.ANTHROPIC_API_KEY || '',
