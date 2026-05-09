@@ -8,6 +8,7 @@ import configuration from './config/configuration';
 import { HealthModule } from './health/health.module';
 import { NutritionModule } from './nutrition/nutrition.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { UsersModule } from './users/users.module';
 
 const config = configuration();
 
@@ -24,6 +25,7 @@ const config = configuration();
     NutritionModule,
     AnthropicModule,
     HealthModule,
+    UsersModule,
   ],
   providers: [
     {

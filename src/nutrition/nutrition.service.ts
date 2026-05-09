@@ -10,10 +10,10 @@ import {
   NutritionAnalysis,
 } from '../anthropic/anthropic.service';
 import configuration from '../config/configuration';
+import { PrismaService } from '../prisma/prisma.service';
 import { AnalyzeImageDto } from './dto/analyze-image.dto';
 import { NutritionResponse } from './interfaces/nutrition-response.interface';
 
-const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
 const VALID_MIME_TYPES = new Set([
   'image/jpeg',
   'image/png',
@@ -32,11 +32,15 @@ export class NutritionService {
   private readonly config = configuration();
   private readonly clientQueues = new Map<string, ClientQueueState>();
 
-  constructor(private readonly anthropicService: AnthropicService) {}
+  constructor(
+    private readonly anthropicService: AnthropicService,
+    private readonly prisma: PrismaService,
+  ) {}
 
   async analyzeImage(
     dto: AnalyzeImageDto,
     clientKey: string,
+    userId?: string,
   ): Promise<NutritionResponse> {
     const fingerprint = this.createFingerprint(dto);
     const queue = this.getClientQueue(clientKey);
@@ -46,9 +50,7 @@ export class NutritionService {
       return existingRequest;
     }
 
-    if (
-      queue.pendingCount >= this.config.nutrition.maxPendingRequestsPerClient
-    ) {
+    if (queue.pendingCount >= this.config.nutrition.maxPendingRequestsPerClient) {
       throw new HttpException(
         'Too many pending nutrition requests for this client',
         HttpStatus.TOO_MANY_REQUESTS,
@@ -58,11 +60,10 @@ export class NutritionService {
     queue.pendingCount += 1;
 
     const task = queue.tail
-      .then(() => this.performAnalysis(dto))
+      .then(() => this.performAnalysis(dto, userId))
       .finally(() => {
         queue.pendingCount -= 1;
         queue.requests.delete(fingerprint);
-
         if (queue.pendingCount === 0 && queue.requests.size === 0) {
           this.clientQueues.delete(clientKey);
         }
@@ -74,14 +75,8 @@ export class NutritionService {
     return task;
   }
 
-  private async performAnalysis(dto: AnalyzeImageDto): Promise<NutritionResponse> {
+  private async performAnalysis(dto: AnalyzeImageDto, userId?: string): Promise<NutritionResponse> {
     const mimeType = this.resolveMimeType(dto);
-    const base64Data = dto.imageBase64.replace(/^data:[^;]+;base64,/, '');
-    const imageSize = Buffer.from(base64Data, 'base64').byteLength;
-
-    // if (imageSize > MAX_IMAGE_SIZE_BYTES) {
-    //   throw new BadRequestException('Image too large');
-    // }
 
     if (!VALID_MIME_TYPES.has(mimeType)) {
       throw new BadRequestException('Invalid image type');
@@ -94,25 +89,41 @@ export class NutritionService {
       this.resolveLanguage(dto),
     );
 
-    return {
+    const response: NutritionResponse = {
       isValidFood: result.isValidFood,
       foodName: result.foodName,
       servingSize: result.servingSize,
       nutrients: result.nutrients,
       description: result.description,
     };
+
+    if (userId && result.isValidFood) {
+      await this.saveLog(userId, response);
+    }
+
+    return response;
+  }
+
+  private async saveLog(userId: string, result: NutritionResponse): Promise<void> {
+    await this.prisma.nutrition_log.create({
+      data: {
+        user_id: BigInt(userId),
+        food_name: result.foodName,
+        serving_size: result.servingSize,
+        nutrients: result.nutrients ? (result.nutrients as object) : undefined,
+        description: result.description,
+      },
+    });
   }
 
   private getClientQueue(clientKey: string): ClientQueueState {
-    const existingQueue = this.clientQueues.get(clientKey);
-    if (existingQueue) {
-      return existingQueue;
-    }
+    const existing = this.clientQueues.get(clientKey);
+    if (existing) return existing;
 
     const queue: ClientQueueState = {
       pendingCount: 0,
       tail: Promise.resolve(),
-      requests: new Map<string, Promise<NutritionResponse>>(),
+      requests: new Map(),
     };
     this.clientQueues.set(clientKey, queue);
     return queue;
@@ -120,23 +131,19 @@ export class NutritionService {
 
   private createFingerprint(dto: AnalyzeImageDto): string {
     const mimeType = this.resolveMimeType(dto);
-    const normalizedPayload = JSON.stringify({
+    const payload = JSON.stringify({
       imageBase64: dto.imageBase64.replace(/^data:[^;]+;base64,/, ''),
       mimeType,
       description: dto.description?.trim() || '',
       language: this.resolveLanguage(dto),
     });
-
-    return createHash('sha256').update(normalizedPayload).digest('hex');
+    return createHash('sha256').update(payload).digest('hex');
   }
 
   private resolveMimeType(dto: AnalyzeImageDto): string {
-    if (dto.mimeType) {
-      return dto.mimeType;
-    }
-
-    const dataUrlMatch = dto.imageBase64.match(/^data:([^;]+);base64,/);
-    return dataUrlMatch?.[1] ?? 'image/png';
+    if (dto.mimeType) return dto.mimeType;
+    const match = dto.imageBase64.match(/^data:([^;]+);base64,/);
+    return match?.[1] ?? 'image/png';
   }
 
   private resolveLanguage(dto: AnalyzeImageDto): string {
