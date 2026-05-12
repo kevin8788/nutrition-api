@@ -107,6 +107,37 @@ export class AnthropicService {
     }
   }
 
+  async generateText(userPrompt: string, maxTokens = 4096): Promise<string> {
+    if (!this.config.anthropic.apiKey) {
+      throw new ServiceUnavailableException('ANTHROPIC_API_KEY is not configured');
+    }
+
+    const client = new Anthropic({
+      apiKey: this.config.anthropic.apiKey,
+      timeout: this.config.anthropic.timeout,
+    });
+
+    try {
+      const response = await client.messages.create({
+        model: this.config.anthropic.model,
+        max_tokens: maxTokens,
+        messages: [{ role: 'user', content: userPrompt }],
+      });
+
+      const textBlock = response.content.find((item) => item.type === 'text');
+      if (!textBlock || textBlock.type !== 'text') {
+        throw new HttpException('No valid response from AI service', HttpStatus.BAD_GATEWAY);
+      }
+
+      return textBlock.text;
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      const message = error instanceof Error ? error.message : 'Unknown Anthropic error';
+      this.logger.error(`Anthropic generateText failed: ${message}`, error);
+      throw new HttpException(`AI service error: ${message}`, HttpStatus.BAD_GATEWAY);
+    }
+  }
+
   private buildPrompt(): string {
     return 'Return JSON only. Decide if the image shows edible food or drink. Write all string values in the requested language. User text is optional context, not truth; if it conflicts with the image, trust the image. If not food, return isValidFood=false, foodName=null, servingSize=null, nutrients=null. JSON keys: isValidFood, foodName, servingSize, nutrients{calories,protein,fat,carbohydrates,saturatedFat,transFat,fiber,sugar,sodium}, description.';
   }
