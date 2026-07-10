@@ -2,8 +2,10 @@ import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CreatePlannedWorkoutDto } from './dto/create-planned-workout.dto';
+import { GeneratePlanDto } from './dto/generate-plan.dto';
 import { PlanDateQueryDto } from './dto/plan-date-query.dto';
 import {
+  GeneratedPlanResponse,
   PlannedWorkoutResponse,
   TodayPlanResponse,
   WeekPlanResponse,
@@ -31,6 +33,14 @@ export class PlanController {
     @Query() query: PlanDateQueryDto,
   ): Promise<WeekPlanResponse> {
     return this.planService.getWeek(user.userId, query.date);
+  }
+
+  @Post('generate')
+  generate(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: GeneratePlanDto,
+  ): Promise<GeneratedPlanResponse> {
+    return this.planService.generate(user.userId, dto);
   }
 
   @Post('sessions')

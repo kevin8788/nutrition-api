@@ -42,4 +42,18 @@ export class PlannedWorkoutRepository {
   async updateStatus(id: bigint, status: string): Promise<void> {
     await this.prisma.planned_workout.update({ where: { id }, data: { status } });
   }
+
+  async deletePendingBetween(userId: bigint, start: Date, end: Date): Promise<void> {
+    await this.prisma.planned_workout.deleteMany({
+      where: {
+        user_id: userId,
+        status: 'pending',
+        scheduled_date: { gte: start, lt: end },
+      },
+    });
+  }
+
+  async createMany(data: CreatePlannedWorkoutData[]): Promise<void> {
+    await this.prisma.planned_workout.createMany({ data });
+  }
 }

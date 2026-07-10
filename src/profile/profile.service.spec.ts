@@ -17,6 +17,8 @@ const buildProfile = (overrides: Partial<user_profile> = {}): user_profile => ({
   preferred_location: null,
   goal_type: null,
   intensity_preference: null,
+  injuries: [],
+  health_conditions: [],
   updated_at: null,
   ...overrides,
 });
@@ -143,6 +145,28 @@ describe('ProfileService', () => {
       preferredLocation: null,
       goalType: null,
       intensityPreference: null,
+      injuries: [],
+      healthConditions: [],
     });
+  });
+
+  it('saves limitations, with empty arrays meaning "none apply"', async () => {
+    repository.findSettings.mockResolvedValue(null);
+    repository.upsertProfile.mockResolvedValue(
+      buildProfile({ injuries: ['knee'], health_conditions: [] }),
+    );
+    repository.findUserGender.mockResolvedValue(null);
+
+    const result = await service.saveOnboarding('42', {
+      injuries: ['knee'],
+      health_conditions: [],
+    });
+
+    expect(repository.upsertProfile).toHaveBeenCalledWith(
+      42n,
+      expect.objectContaining({ injuries: ['knee'], health_conditions: [] }),
+    );
+    expect(result.injuries).toEqual(['knee']);
+    expect(result.healthConditions).toEqual([]);
   });
 });

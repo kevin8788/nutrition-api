@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
+import { ProfileModule } from '../profile/profile.module';
 import { PlanController } from './plan.controller';
 import { PlanService } from './plan.service';
 import { ProgressController } from './progress.controller';
@@ -11,7 +12,7 @@ import { WorkoutsController } from './workouts.controller';
 import { WorkoutsService } from './workouts.service';
 
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, ProfileModule],
   controllers: [WorkoutsController, PlanController, ProgressController],
   providers: [
     WorkoutsService,

@@ -1,14 +1,27 @@
 import {
+  ArrayMaxSize,
+  IsArray,
   IsBoolean,
   IsIn,
   IsInt,
   IsNumber,
   IsOptional,
-  IsString,
   Max,
-  MaxLength,
   Min,
 } from 'class-validator';
+
+export const ACTIVITY_LEVELS = ['sedentary', 'light', 'moderate', 'active', 'very_active'];
+export const GOAL_TYPES = ['lose_weight', 'build_endurance', 'general_fitness'];
+export const INTENSITY_PREFERENCES = ['low', 'medium', 'high'];
+export const INJURIES = ['knee', 'back', 'ankle', 'hip', 'shoulder', 'wrist', 'foot'];
+export const HEALTH_CONDITIONS = [
+  'obesity',
+  'prediabetes',
+  'diabetes',
+  'high_blood_pressure',
+  'asthma',
+  'heart_condition',
+];
 
 /**
  * Partial upsert: the app can save after each onboarding step or send
@@ -43,8 +56,7 @@ export class SaveOnboardingDto {
   height_cm?: number;
 
   @IsOptional()
-  @IsString()
-  @MaxLength(50)
+  @IsIn(ACTIVITY_LEVELS)
   activity_level?: string;
 
   @IsOptional()
@@ -68,12 +80,23 @@ export class SaveOnboardingDto {
   preferred_location?: string;
 
   @IsOptional()
-  @IsString()
-  @MaxLength(50)
+  @IsIn(GOAL_TYPES)
   goal_type?: string;
 
   @IsOptional()
-  @IsString()
-  @MaxLength(50)
+  @IsIn(INTENSITY_PREFERENCES)
   intensity_preference?: string;
+
+  /** Send empty arrays for "None of these apply to me". */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(INJURIES.length)
+  @IsIn(INJURIES, { each: true })
+  injuries?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(HEALTH_CONDITIONS.length)
+  @IsIn(HEALTH_CONDITIONS, { each: true })
+  health_conditions?: string[];
 }

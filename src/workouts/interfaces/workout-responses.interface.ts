@@ -37,6 +37,12 @@ export interface WeekPlanResponse {
   sessions: PlannedWorkoutResponse[];
 }
 
+export interface GeneratedPlanResponse {
+  startDate: string;
+  endDate: string;
+  sessions: PlannedWorkoutResponse[];
+}
+
 export interface GoalProgress {
   completed: number;
   target: number;

@@ -114,6 +114,8 @@ model user_profile {
   preferred_location    String?   @db.VarChar
   goal_type             String?   @db.VarChar
   intensity_preference  String?   @db.VarChar
+  injuries              String[]  @default([])
+  health_conditions     String[]  @default([])
   updated_at            DateTime? @db.Date
   users                 User?     @relation(fields: [user_id], references: [id])
 }

@@ -8,5 +8,6 @@ import { ProfileRepository } from './repositories/profile.repository';
   imports: [AuthModule],
   controllers: [ProfileController],
   providers: [ProfileService, ProfileRepository],
+  exports: [ProfileRepository],
 })
 export class ProfileModule {}

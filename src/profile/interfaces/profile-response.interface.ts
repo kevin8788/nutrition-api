@@ -11,4 +11,6 @@ export interface ProfileResponse {
   preferredLocation: string | null;
   goalType: string | null;
   intensityPreference: string | null;
+  injuries: string[];
+  healthConditions: string[];
 }

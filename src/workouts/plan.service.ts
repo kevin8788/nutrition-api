@@ -1,17 +1,26 @@
 import { Injectable } from '@nestjs/common';
+import { ProfileRepository } from '../profile/repositories/profile.repository';
 import { CreatePlannedWorkoutDto } from './dto/create-planned-workout.dto';
+import { GeneratePlanDto } from './dto/generate-plan.dto';
 import {
+  GeneratedPlanResponse,
   PlannedWorkoutResponse,
   TodayPlanResponse,
   WeekPlanResponse,
 } from './interfaces/workout-responses.interface';
 import { PlannedWorkoutRepository } from './repositories/planned-workout.repository';
 import { resolveAnchorDate, toIsoDate, weekRange } from './utils/date-range.util';
+import { generateWeekPlan } from './utils/plan-generator.util';
 import { mapPlanned, parseId } from './utils/workout-mappers.util';
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 @Injectable()
 export class PlanService {
-  constructor(private readonly plannedWorkouts: PlannedWorkoutRepository) {}
+  constructor(
+    private readonly plannedWorkouts: PlannedWorkoutRepository,
+    private readonly profiles: ProfileRepository,
+  ) {}
 
   async getToday(userId: string, date?: string): Promise<TodayPlanResponse> {
     const anchor = resolveAnchorDate(date);
@@ -57,5 +66,32 @@ export class PlanService {
     });
 
     return mapPlanned(planned);
+  }
+
+  /**
+   * "Generate My Plan": builds a 7-day rule-based plan from the onboarding
+   * profile. Re-generating replaces pending (not completed) sessions in the
+   * same window.
+   */
+  async generate(userId: string, dto: GeneratePlanDto): Promise<GeneratedPlanResponse> {
+    const userBigId = parseId(userId, 'user id');
+    const start = resolveAnchorDate(dto.start_date);
+    const end = new Date(start.getTime() + 7 * DAY_MS);
+
+    const profile = await this.profiles.findProfile(userBigId);
+    const workouts = generateWeekPlan(profile, start);
+
+    await this.plannedWorkouts.deletePendingBetween(userBigId, start, end);
+    await this.plannedWorkouts.createMany(
+      workouts.map((workout) => ({ user_id: userBigId, ...workout })),
+    );
+
+    const sessions = await this.plannedWorkouts.findBetween(userBigId, start, end);
+
+    return {
+      startDate: toIsoDate(start),
+      endDate: toIsoDate(new Date(end.getTime() - 1)),
+      sessions: sessions.map(mapPlanned),
+    };
   }
 }

@@ -53,6 +53,8 @@ export class ProfileService {
       preferred_location: dto.preferred_location,
       goal_type: dto.goal_type,
       intensity_preference: dto.intensity_preference,
+      injuries: dto.injuries,
+      health_conditions: dto.health_conditions,
     });
 
     const gender =
@@ -82,6 +84,8 @@ export class ProfileService {
       preferredLocation: profile?.preferred_location ?? null,
       goalType: profile?.goal_type ?? null,
       intensityPreference: profile?.intensity_preference ?? null,
+      injuries: profile?.injuries ?? [],
+      healthConditions: profile?.health_conditions ?? [],
     };
   }
 }
