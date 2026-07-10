@@ -17,12 +17,33 @@ interface CreateSessionData {
   is_indoor: boolean;
 }
 
+interface LogSessionData {
+  user_id: bigint;
+  workout_type: string;
+  planned_workout_id: bigint | null;
+  is_indoor: boolean;
+  started_at: Date;
+  ended_at: Date | null;
+  duration_seconds: number;
+  distance_km: number;
+  avg_speed_kmh: number | null;
+  calories: number;
+  effort_rating: number | null;
+}
+
 @Injectable()
 export class WorkoutSessionRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(data: CreateSessionData): Promise<WorkoutSessionWithPlanned> {
     return this.prisma.workout_session.create({ data, include: withPlanned });
+  }
+
+  async createLog(data: LogSessionData): Promise<WorkoutSessionWithPlanned> {
+    return this.prisma.workout_session.create({
+      data: { ...data, status: 'completed' },
+      include: withPlanned,
+    });
   }
 
   async findByIdForUser(

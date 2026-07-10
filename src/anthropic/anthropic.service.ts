@@ -7,6 +7,19 @@ import {
 } from '@nestjs/common';
 import Anthropic from '@anthropic-ai/sdk';
 import configuration from '../config/configuration';
+import { AiWorkoutPlan } from '../workouts/interfaces/ai-plan.interface';
+
+export interface UserProfileData {
+  weight: number | null;
+  height: number | null;
+  activityLevel: string | null;
+  dailyWalkingMinutes: number | null;
+  hasRunBefore: boolean | null;
+  daysPerWeek: number | null;
+  preferredLocation: string | null;
+  goalType: string | null;
+  intensityPreference: string | null;
+}
 
 type SupportedAnthropicImageType =
   | 'image/jpeg'
@@ -130,6 +143,62 @@ export class AnthropicService {
     } catch {
       return this.invalidResponse('AI response was not valid JSON');
     }
+  }
+
+  async generateWorkoutPlan(profile: UserProfileData): Promise<AiWorkoutPlan> {
+    if (!this.config.anthropic.apiKey) {
+      throw new ServiceUnavailableException('ANTHROPIC_API_KEY is not configured');
+    }
+
+    const client = new Anthropic({
+      apiKey: this.config.anthropic.apiKey,
+      timeout: this.config.anthropic.timeout,
+    });
+
+    try {
+      const response = await client.messages.create({
+        model: this.config.anthropic.model,
+        max_tokens: 2048,
+        system:
+          'Return JSON only. Generate a personalized weekly workout plan. JSON keys: summary (string), weeklySchedule (array of {day, workoutType, durationMinutes, intensity, description}), recommendations (array of strings). workoutType must be one of: walk, run, treadmill_cardio.',
+        messages: [{ role: 'user', content: this.buildWorkoutPlanPrompt(profile) }],
+      });
+
+      const textBlock = response.content.find((item) => item.type === 'text');
+      if (!textBlock || textBlock.type !== 'text') {
+        throw new HttpException('No valid response from AI service', HttpStatus.BAD_GATEWAY);
+      }
+
+      const jsonMatch = textBlock.text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new HttpException('Could not parse AI response', HttpStatus.BAD_GATEWAY);
+      }
+
+      return JSON.parse(jsonMatch[0]) as AiWorkoutPlan;
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+
+      const message = error instanceof Error ? error.message : 'Unknown Anthropic error';
+      this.logger.error(`Anthropic workout plan request failed: ${message}`, error);
+      throw new HttpException(
+        `Error generating workout plan: ${message}`,
+        HttpStatus.BAD_GATEWAY,
+      );
+    }
+  }
+
+  private buildWorkoutPlanPrompt(profile: UserProfileData): string {
+    const parts: string[] = ['Generate a personalized weekly workout plan for this user:'];
+    if (profile.weight) parts.push(`Weight: ${profile.weight}kg`);
+    if (profile.height) parts.push(`Height: ${profile.height}cm`);
+    if (profile.activityLevel) parts.push(`Activity level: ${profile.activityLevel}`);
+    if (profile.daysPerWeek) parts.push(`Workout days per week: ${profile.daysPerWeek}`);
+    if (profile.goalType) parts.push(`Goal: ${profile.goalType}`);
+    if (profile.intensityPreference) parts.push(`Intensity preference: ${profile.intensityPreference}`);
+    if (profile.preferredLocation) parts.push(`Preferred location: ${profile.preferredLocation}`);
+    if (profile.hasRunBefore !== null) parts.push(`Has run before: ${profile.hasRunBefore}`);
+    if (profile.dailyWalkingMinutes) parts.push(`Daily walking: ${profile.dailyWalkingMinutes} minutes`);
+    return parts.join('\n');
   }
 
   private invalidResponse(description: string): NutritionAnalysis {
