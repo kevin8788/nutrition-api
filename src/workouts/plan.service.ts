@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { AnthropicService } from '../anthropic/anthropic.service';
+import { AnthropicService, WorkoutPlanContext } from '../anthropic/anthropic.service';
 import { CreatePlannedWorkoutDto } from './dto/create-planned-workout.dto';
+import { GenerateAiPlanDto } from './dto/generate-ai-plan.dto';
 import { LogWorkoutDto } from './dto/log-workout.dto';
 import { SaveAiPlanDto } from './dto/save-ai-plan.dto';
 import { AiWorkoutPlan } from './interfaces/ai-plan.interface';
@@ -11,7 +12,7 @@ import {
   WorkoutSessionResponse,
 } from './interfaces/workout-responses.interface';
 import { PlannedWorkoutRepository } from './repositories/planned-workout.repository';
-import { UserProfileRepository } from './repositories/user-profile.repository';
+import { UserProfileRepository, UserProfileWrite } from './repositories/user-profile.repository';
 import { WorkoutSessionRepository } from './repositories/workout-session.repository';
 import { resolveAnchorDate, toIsoDate, weekRange } from './utils/date-range.util';
 import { mapPlanned, mapSession, parseId } from './utils/workout-mappers.util';
@@ -169,25 +170,85 @@ export class PlanService {
     return date;
   }
 
-  async generateAiPlan(userId: string): Promise<{ success: boolean; data: AiWorkoutPlan }> {
-    const profile = await this.userProfiles.findByUserId(parseId(userId, 'user id'));
+  async generateAiPlan(
+    userId: string,
+    dto?: GenerateAiPlanDto,
+  ): Promise<{ success: boolean; data: AiWorkoutPlan }> {
+    const id = parseId(userId, 'user id');
+    const inputProfile = this.extractInputProfile(dto);
+
+    const profile = inputProfile
+      ? await this.userProfiles.upsertForUser(id, inputProfile)
+      : await this.userProfiles.findByUserId(id);
 
     if (!profile) {
       throw new NotFoundException('User profile not found. Please complete your profile first.');
     }
 
-    const data = await this.anthropic.generateWorkoutPlan({
-      weight: profile.weight,
-      height: profile.height,
-      activityLevel: profile.activity_level,
-      dailyWalkingMinutes: profile.daily_walking_minutes ? Number(profile.daily_walking_minutes) : null,
-      hasRunBefore: profile.has_run_before,
-      daysPerWeek: profile.days_per_week,
-      preferredLocation: profile.preferred_location,
-      goalType: profile.goal_type,
-      intensityPreference: profile.intensity_preference,
-    });
+    const data = await this.anthropic.generateWorkoutPlan(
+      {
+        weight: profile.weight,
+        height: profile.height,
+        activityLevel: profile.activity_level,
+        dailyWalkingMinutes: profile.daily_walking_minutes ? Number(profile.daily_walking_minutes) : null,
+        hasRunBefore: profile.has_run_before,
+        daysPerWeek: profile.days_per_week,
+        preferredLocation: profile.preferred_location,
+        goalType: profile.goal_type,
+        intensityPreference: profile.intensity_preference,
+      },
+      this.extractPlanContext(dto),
+    );
 
     return { success: true, data };
+  }
+
+  private extractPlanContext(dto?: GenerateAiPlanDto): WorkoutPlanContext {
+    const input = dto?.input;
+    if (!input) {
+      return {};
+    }
+
+    return {
+      startDate: typeof input.startDate === 'string' ? input.startDate : undefined,
+      durationWeeks: typeof input.durationWeeks === 'number' ? input.durationWeeks : undefined,
+      healthFlags:
+        typeof input.healthFlags === 'object' && input.healthFlags !== null
+          ? (input.healthFlags as Record<string, unknown>)
+          : undefined,
+      recentWorkoutLogs: Array.isArray(input.recentWorkoutLogs) ? input.recentWorkoutLogs : undefined,
+      recentWearableMetrics: Array.isArray(input.recentWearableMetrics)
+        ? input.recentWearableMetrics
+        : undefined,
+    };
+  }
+
+  // Maps the mobile app's PlanGenerationInput.profile (camelCase, metric
+  // suffixes) onto user_profile columns. Unknown or malformed fields fall
+  // back to null so a partial onboarding still produces a usable profile.
+  private extractInputProfile(dto?: GenerateAiPlanDto): UserProfileWrite | null {
+    const profile = dto?.input?.profile as Record<string, unknown> | undefined;
+
+    if (!profile || typeof profile !== 'object') {
+      return null;
+    }
+
+    return {
+      weight: typeof profile.weightKg === 'number' ? profile.weightKg : null,
+      height: typeof profile.heightCm === 'number' ? profile.heightCm : null,
+      activity_level: typeof profile.activityLevel === 'string' ? profile.activityLevel : null,
+      daily_walking_minutes:
+        typeof profile.walkingCapacityMinutes === 'number'
+          ? BigInt(Math.round(profile.walkingCapacityMinutes))
+          : null,
+      has_run_before: typeof profile.hasRunBefore === 'boolean' ? profile.hasRunBefore : null,
+      days_per_week:
+        typeof profile.availableDaysPerWeek === 'number' ? profile.availableDaysPerWeek : null,
+      preferred_location:
+        typeof profile.trainingLocation === 'string' ? profile.trainingLocation : null,
+      goal_type: typeof profile.goal === 'string' ? profile.goal : null,
+      intensity_preference:
+        typeof profile.preferredIntensity === 'string' ? profile.preferredIntensity : null,
+    };
   }
 }

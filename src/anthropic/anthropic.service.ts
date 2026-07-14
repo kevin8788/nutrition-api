@@ -21,6 +21,15 @@ export interface UserProfileData {
   intensityPreference: string | null;
 }
 
+// Extra plan context forwarded from the app's PlanGenerationInput.
+export interface WorkoutPlanContext {
+  startDate?: string;
+  durationWeeks?: number;
+  healthFlags?: Record<string, unknown>;
+  recentWorkoutLogs?: unknown[];
+  recentWearableMetrics?: unknown[];
+}
+
 type SupportedAnthropicImageType =
   | 'image/jpeg'
   | 'image/png'
@@ -145,7 +154,10 @@ export class AnthropicService {
     }
   }
 
-  async generateWorkoutPlan(profile: UserProfileData): Promise<AiWorkoutPlan> {
+  async generateWorkoutPlan(
+    profile: UserProfileData,
+    context: WorkoutPlanContext = {},
+  ): Promise<AiWorkoutPlan> {
     if (!this.config.anthropic.apiKey) {
       throw new ServiceUnavailableException('ANTHROPIC_API_KEY is not configured');
     }
@@ -158,10 +170,12 @@ export class AnthropicService {
     try {
       const response = await client.messages.create({
         model: this.config.anthropic.model,
-        max_tokens: 2048,
+        // A multi-week plan with per-session detail easily exceeds 2K tokens;
+        // a tight budget truncates the JSON and the parse below fails.
+        max_tokens: 8192,
         system:
-          'Return JSON only. Generate a personalized weekly workout plan. JSON keys: summary (string), weeklySchedule (array of {day, workoutType, durationMinutes, intensity, description}), recommendations (array of strings). workoutType must be one of: walk, run, treadmill_cardio.',
-        messages: [{ role: 'user', content: this.buildWorkoutPlanPrompt(profile) }],
+          'You are FitWalk Coach, a safe beginner-focused walking/running coach for overweight users. Return valid JSON only — no markdown fences, no prose outside the JSON object.',
+        messages: [{ role: 'user', content: this.buildWorkoutPlanPrompt(profile, context) }],
       });
 
       const textBlock = response.content.find((item) => item.type === 'text');
@@ -187,18 +201,69 @@ export class AnthropicService {
     }
   }
 
-  private buildWorkoutPlanPrompt(profile: UserProfileData): string {
-    const parts: string[] = ['Generate a personalized weekly workout plan for this user:'];
-    if (profile.weight) parts.push(`Weight: ${profile.weight}kg`);
-    if (profile.height) parts.push(`Height: ${profile.height}cm`);
-    if (profile.activityLevel) parts.push(`Activity level: ${profile.activityLevel}`);
-    if (profile.daysPerWeek) parts.push(`Workout days per week: ${profile.daysPerWeek}`);
-    if (profile.goalType) parts.push(`Goal: ${profile.goalType}`);
-    if (profile.intensityPreference) parts.push(`Intensity preference: ${profile.intensityPreference}`);
-    if (profile.preferredLocation) parts.push(`Preferred location: ${profile.preferredLocation}`);
-    if (profile.hasRunBefore !== null) parts.push(`Has run before: ${profile.hasRunBefore}`);
-    if (profile.dailyWalkingMinutes) parts.push(`Daily walking: ${profile.dailyWalkingMinutes} minutes`);
-    return parts.join('\n');
+  // Mirrors the wire contract the app validates with aiPlanResponseSchema
+  // (FitWalk-app src/validation/schemas.ts) — keep the two in sync.
+  private buildWorkoutPlanPrompt(profile: UserProfileData, context: WorkoutPlanContext): string {
+    const startDate = context.startDate ?? this.defaultStartDate();
+    const durationWeeks = context.durationWeeks ?? 4;
+
+    return `Create a realistic training plan based only on the structured user data provided.
+Do not invent biometric data.
+Prioritize safety, gradual progression, and consistency.
+If user has joint pain or very low fitness, prefer walking and low-impact sessions.
+Never increase duration, intensity, and frequency in the same week.
+Use safe language ("reduce intensity", "stop if pain is sharp") — never "push through the pain".
+If data is missing, list it in data_limitations instead of guessing.
+Return valid JSON only.
+
+User profile:
+${JSON.stringify(profile, null, 2)}
+
+Health flags:
+${JSON.stringify(context.healthFlags ?? {}, null, 2)}
+
+Recent wearable data:
+${JSON.stringify(context.recentWearableMetrics ?? [], null, 2)}
+
+Recent workout logs:
+${JSON.stringify(context.recentWorkoutLogs ?? [], null, 2)}
+
+Plan start date: ${startDate}
+Plan duration in weeks: ${durationWeeks}
+
+Output schema:
+{
+  "plan_name": "string",
+  "duration_weeks": number,
+  "weekly_schedule": [
+    {
+      "week": number,
+      "sessions": [
+        {
+          "date": "YYYY-MM-DD",
+          "type": "easy_walk | brisk_walk | walk_intervals | walk_run_intervals | treadmill_cardio | strength_low_impact | mobility | active_rest | rest",
+          "duration_minutes": number,
+          "distance_miles": number | null,
+          "intensity": "easy | moderate | hard",
+          "warmup": "string",
+          "main_workout": "string",
+          "cooldown": "string",
+          "strength_optional": "string | null",
+          "safety_notes": ["string"],
+          "metrics_to_track": ["heart_rate | steps | distance | pace | perceived_exertion | pain_level"]
+        }
+      ]
+    }
+  ],
+  "progression_notes": ["string"],
+  "data_limitations": ["string"]
+}`;
+  }
+
+  private defaultStartDate(): string {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return tomorrow.toISOString().slice(0, 10);
   }
 
   private invalidResponse(description: string): NutritionAnalysis {
