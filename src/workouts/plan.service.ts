@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { AnthropicService } from '../anthropic/anthropic.service';
 import { CreatePlannedWorkoutDto } from './dto/create-planned-workout.dto';
 import { LogWorkoutDto } from './dto/log-workout.dto';
+import { SaveAiPlanDto } from './dto/save-ai-plan.dto';
 import { AiWorkoutPlan } from './interfaces/ai-plan.interface';
 import {
   PlannedWorkoutResponse,
@@ -90,14 +91,92 @@ export class PlanService {
     return mapSession(session);
   }
 
-  async generateAiPlan(userId: string): Promise<AiWorkoutPlan> {
+  async saveAiPlan(userId: string, dto: SaveAiPlanDto): Promise<{ success: boolean; savedCount: number }> {
+    const userBigInt = parseId(userId, 'user id');
+    const plan = dto.plan;
+    const sessions = this.extractSessions(plan);
+
+    if (sessions.length === 0) {
+      return { success: true, savedCount: 0 };
+    }
+
+    const created = await Promise.all(
+      sessions.map((s, index) =>
+        this.plannedWorkouts.create({
+          user_id: userBigInt,
+          title: s.title,
+          description: s.description ?? null,
+          workout_type: s.workoutType,
+          scheduled_date: this.dateFromOffset(index),
+          duration_minutes: s.durationMinutes,
+          intensity: s.intensity ?? null,
+          warmup_seconds: null,
+        }),
+      ),
+    );
+
+    return { success: true, savedCount: created.length };
+  }
+
+  private extractSessions(plan: Record<string, any>): Array<{
+    title: string;
+    description: string | null;
+    workoutType: string;
+    durationMinutes: number;
+    intensity: string | null;
+  }> {
+    const schedule: unknown[] = plan.weeklySchedule ?? [];
+    const result: ReturnType<typeof this.extractSessions> = [];
+
+    for (const entry of schedule) {
+      if (!entry || typeof entry !== 'object') continue;
+      const e = entry as Record<string, any>;
+
+      // Shape A: { day, workoutType, durationMinutes, intensity, description }
+      if (typeof e.workoutType === 'string') {
+        result.push({
+          title: e.workoutType.replace(/_/g, ' '),
+          description: typeof e.description === 'string' ? e.description : null,
+          workoutType: e.workoutType,
+          durationMinutes: Number(e.durationMinutes) || 30,
+          intensity: typeof e.intensity === 'string' ? e.intensity : null,
+        });
+        continue;
+      }
+
+      // Shape B: { week, sessions: [{ type, duration, ... }] }
+      const sessions: unknown[] = Array.isArray(e.sessions) ? e.sessions : [];
+      for (const s of sessions) {
+        if (!s || typeof s !== 'object') continue;
+        const sess = s as Record<string, any>;
+        const workoutType = sess.type ?? sess.workoutType ?? sess.activityType ?? 'walk';
+        result.push({
+          title: String(workoutType).replace(/_/g, ' '),
+          description: typeof sess.description === 'string' ? sess.description : null,
+          workoutType: String(workoutType),
+          durationMinutes: Number(sess.duration ?? sess.durationMinutes) || 30,
+          intensity: typeof sess.intensity === 'string' ? sess.intensity : null,
+        });
+      }
+    }
+
+    return result;
+  }
+
+  private dateFromOffset(index: number): Date {
+    const date = new Date();
+    date.setDate(date.getDate() + index + 1);
+    return date;
+  }
+
+  async generateAiPlan(userId: string): Promise<{ success: boolean; data: AiWorkoutPlan }> {
     const profile = await this.userProfiles.findByUserId(parseId(userId, 'user id'));
 
     if (!profile) {
       throw new NotFoundException('User profile not found. Please complete your profile first.');
     }
 
-    return this.anthropic.generateWorkoutPlan({
+    const data = await this.anthropic.generateWorkoutPlan({
       weight: profile.weight,
       height: profile.height,
       activityLevel: profile.activity_level,
@@ -108,5 +187,7 @@ export class PlanService {
       goalType: profile.goal_type,
       intensityPreference: profile.intensity_preference,
     });
+
+    return { success: true, data };
   }
 }

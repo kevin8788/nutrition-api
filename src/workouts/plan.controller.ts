@@ -4,6 +4,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CreatePlannedWorkoutDto } from './dto/create-planned-workout.dto';
 import { LogWorkoutDto } from './dto/log-workout.dto';
 import { PlanDateQueryDto } from './dto/plan-date-query.dto';
+import { SaveAiPlanDto } from './dto/save-ai-plan.dto';
 import { AiWorkoutPlan } from './interfaces/ai-plan.interface';
 import {
   PlannedWorkoutResponse,
@@ -46,6 +47,15 @@ export class PlanController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  saveAiPlan(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: SaveAiPlanDto,
+  ): Promise<{ success: boolean; savedCount: number }> {
+    return this.planService.saveAiPlan(user.userId, dto);
+  }
+
+  @Post('log')
+  @HttpCode(HttpStatus.CREATED)
   logWorkout(
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: LogWorkoutDto,
@@ -55,7 +65,7 @@ export class PlanController {
 
   @Post('generate-ai')
   @HttpCode(HttpStatus.OK)
-  generateAiPlan(@CurrentUser() user: AuthenticatedUser): Promise<AiWorkoutPlan> {
+  generateAiPlan(@CurrentUser() user: AuthenticatedUser): Promise<{ success: boolean; data: AiWorkoutPlan }> {
     return this.planService.generateAiPlan(user.userId);
   }
 }

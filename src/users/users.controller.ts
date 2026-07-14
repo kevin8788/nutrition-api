@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Patch, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { UpdateSettingsDto } from './dto/update-settings.dto';
@@ -11,6 +11,11 @@ type AuthenticatedUser = { userId: string; email: string };
 @UseGuards(JwtAuthGuard)
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
+
+  @Get('logins')
+  getLogins(@CurrentUser() user: AuthenticatedUser): Promise<{ date: string | null }[]> {
+    return this.usersService.getLogins(user.userId);
+  }
 
   @Post('logins')
   @HttpCode(HttpStatus.OK)
@@ -25,6 +30,14 @@ export class UsersController {
 
   @Patch('settings')
   updateSettings(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: UpdateSettingsDto,
+  ): Promise<SettingsResponse> {
+    return this.usersService.updateSettings(user.userId, dto);
+  }
+
+  @Put('settings')
+  replaceSettings(
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: UpdateSettingsDto,
   ): Promise<SettingsResponse> {
