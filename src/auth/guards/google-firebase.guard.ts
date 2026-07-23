@@ -1,6 +1,7 @@
 // google firebase.guard.ts
 import { Injectable, CanActivate, ExecutionContext, UnauthorizedException } from '@nestjs/common';
-import * as admin from 'firebase-admin';
+import { cert, getApps, initializeApp } from 'firebase-admin/app';
+import { getAuth } from 'firebase-admin/auth';
 import 'dotenv/config';
 
 declare global {
@@ -16,9 +17,9 @@ declare global {
 export class GoogleFirebaseGuard implements CanActivate {
   constructor() {
     // Initialize Firebase Admin SDK
-    if (!admin.apps.length) {
-      admin.initializeApp({
-        credential: admin.credential.cert({
+    if (!getApps().length) {
+      initializeApp({
+        credential: cert({
           projectId: process.env.FIREBASE_PROJECT_ID,
           privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
           clientEmail: `firebase-adminsdk-${process.env.FIREBASE_PROJECT_ID}@${process.env.FIREBASE_PROJECT_ID}.iam.gserviceaccount.com`,
@@ -38,7 +39,7 @@ export class GoogleFirebaseGuard implements CanActivate {
     const token = authHeader.split(' ')[1]; // Assuming Bearer token
 
     try {
-      const decodedToken = await admin.auth().verifyIdToken(token);
+      const decodedToken = await getAuth().verifyIdToken(token);
       request.user = decodedToken; // Attach user info to request
       return true;
     } catch (error) {

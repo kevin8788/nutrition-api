@@ -1,28 +1,30 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import * as admin from 'firebase-admin';
+import { getApps, initializeApp } from 'firebase-admin/app';
+import { getAuth } from 'firebase-admin/auth';
 import { FirebaseService } from './firebase.service';
 
-jest.mock('firebase-admin', () => ({
-  apps: [],
+jest.mock('firebase-admin/app', () => ({
+  getApps: jest.fn(),
   initializeApp: jest.fn(),
-  credential: {
-    cert: jest.fn().mockReturnValue({}),
-  },
-  auth: jest.fn(),
+  cert: jest.fn().mockReturnValue({}),
+}));
+
+jest.mock('firebase-admin/auth', () => ({
+  getAuth: jest.fn(),
 }));
 
 describe('FirebaseService', () => {
   let service: FirebaseService;
 
   beforeEach(async () => {
-    (admin.apps as any) = [];
+    (getApps as jest.Mock).mockReturnValue([]);
     const module: TestingModule = await Test.createTestingModule({
       providers: [FirebaseService],
     }).compile();
 
     service = module.get<FirebaseService>(FirebaseService);
     jest.clearAllMocks();
-    (admin.apps as any) = [];
+    (getApps as jest.Mock).mockReturnValue([]);
     await service.onModuleInit();
   });
 
@@ -31,14 +33,14 @@ describe('FirebaseService', () => {
   });
 
   it('should initialize firebase-admin on module init', () => {
-    expect(admin.initializeApp).toHaveBeenCalledTimes(1);
+    expect(initializeApp).toHaveBeenCalledTimes(1);
   });
 
   it('should not re-initialize if already initialized', async () => {
-    (admin.apps as any) = [{}];
+    (getApps as jest.Mock).mockReturnValue([{}]);
     jest.clearAllMocks();
     await service.onModuleInit();
-    expect(admin.initializeApp).not.toHaveBeenCalled();
+    expect(initializeApp).not.toHaveBeenCalled();
   });
 
   it('should verify a token and return google_uid and email', async () => {
@@ -46,7 +48,7 @@ describe('FirebaseService', () => {
       uid: 'google-uid-123',
       email: 'user@example.com',
     });
-    (admin.auth as jest.Mock).mockReturnValue({ verifyIdToken: mockVerify });
+    (getAuth as jest.Mock).mockReturnValue({ verifyIdToken: mockVerify });
 
     const result = await service.verifyToken('valid-token');
 
@@ -56,7 +58,7 @@ describe('FirebaseService', () => {
 
   it('should throw if token is invalid', async () => {
     const mockVerify = jest.fn().mockRejectedValue(new Error('Token expired'));
-    (admin.auth as jest.Mock).mockReturnValue({ verifyIdToken: mockVerify });
+    (getAuth as jest.Mock).mockReturnValue({ verifyIdToken: mockVerify });
 
     await expect(service.verifyToken('bad-token')).rejects.toThrow('Token expired');
   });
